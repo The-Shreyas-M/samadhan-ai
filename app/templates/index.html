@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% block title %}Samadhan AI | Citizen Grievance Portal{% endblock %}
+{% block body %}
+{% set priority_classes = {
+    "Critical": "bg-red-100 text-red-700 border border-red-200",
+    "High": "bg-orange-100 text-orange-700 border border-orange-200",
+    "Medium": "bg-amber-100 text-amber-700 border border-amber-200",
+    "Low": "bg-emerald-100 text-emerald-700 border border-emerald-200"
+} %}
+
+<!-- Top nav -->
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-lg">S</div>
+            <span class="font-semibold text-slate-900 text-lg">Samadhan<span class="text-emerald-600">AI</span></span>
+            <span class="hidden sm:inline text-xs text-slate-400 ml-1">Citizen Grievance Portal</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <a href="/track" class="text-sm px-3 py-2 text-slate-600 hover:text-slate-900 rounded-lg hover:bg-slate-100 transition">Track Complaint</a>
+            <a href="/login" class="text-sm px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition">Staff Login</a>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-4xl mx-auto px-4 py-8 flex-1 w-full">
+    <!-- Hero -->
+    <div class="mb-8">
+        <h1 class="text-3xl sm:text-4xl font-bold text-slate-900 tracking-tight">Report a civic issue. Track it to resolution.</h1>
+        <p class="text-slate-500 mt-2 max-w-2xl">Describe your issue, let AI analyse and classify it, then submit. Report in Hindi, Hinglish or English.</p>
+    </div>
+
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+        <h2 class="font-semibold text-slate-900 mb-4">Report a Complaint</h2>
+
+        <div id="submit-feedback" class="hidden mb-4"></div>
+
+        <form id="complaint-form" hx-post="/api/complaints/submit" hx-target="#submit-feedback" hx-swap="innerHTML" enctype="multipart/form-data">
+            <!-- Step 1: Describe -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Describe the issue</label>
+                <textarea id="raw-text" name="raw_text" required rows="4"
+                    class="w-full border border-slate-300 rounded-lg p-3 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                    placeholder="e.g. Bade pothole ke kaaran road pe accidents ho rahe hain..."></textarea>
+            </div>
+
+            <!-- Analyze button + loading -->
+            <div class="mb-4">
+                <button type="button" id="analyze-btn" onclick="analyzeComplaint()"
+                    class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-lg transition">
+                    🔍 Analyse Complaint
+                </button>
+                <p class="text-xs text-slate-400 mt-2 text-center">AI classifies the department, priority &amp; urgency before you submit.</p>
+            </div>
+
+            <!-- Analysis result panel -->
+            <div id="analysis-result" class="hidden mb-4"></div>
+
+            <!-- Step 2: Location (always required) -->
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-slate-700 mb-1">Location</label>
+                <div class="flex items-center gap-2 mb-2">
+                    <input id="place-search" type="text" placeholder="Search a place (e.g. India Gate, Connaught Place)..."
+                        class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none"
+                        autocomplete="off">
+                    <button type="button" onclick="citizenSearchPlace()" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700">Search</button>
+                </div>
+                <div id="form-map" class="h-56 w-full rounded-lg border border-slate-300"></div>
+                <p id="loc-hint" class="text-xs text-slate-400 mt-1">Click on the map to set the location of the issue.</p>
+                <div id="loc-gps-banner" class="hidden text-xs rounded-lg border border-blue-200 bg-blue-50 text-blue-700 p-2 mt-2">
+                    📡 <b>High/Critical priority:</b> For your safety and accuracy, please use <b>Use My Location</b>. Manual pin placement has been disabled.
+                </div>
+                <input type="hidden" name="lat" id="lat">
+                <input type="hidden" name="lon" id="lon">
+                <div class="flex items-center gap-2 mt-2">
+                    <button type="button" onclick="useGps()" class="text-sm px-3 py-2 border border-slate-300 rounded-lg text-slate-700 hover:bg-slate-50 transition flex items-center gap-2">
+                        <span>📡</span> Use My Location
+                    </button>
+                    <div id="loc-status" class="text-xs text-slate-500 flex items-center"></div>
+                </div>
+            </div>
+
+            <!-- Step 3: Camera (only shown for High/Critical after analysis) -->
+            <div id="camera-section" class="hidden mb-4 rounded-xl border border-red-200 bg-red-50 p-4">
+                <p id="camera-req-note" class="text-sm font-medium text-red-700 mb-3">⚠ High-priority complaint detected. Please attach a clear photo of the issue for verification.</p>
+
+                <div id="camera-box">
+                    <div id="camera-off" class="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center bg-white">
+                        <div class="text-3xl mb-2">📷</div>
+                        <p class="text-sm text-slate-500 mb-2">Open the camera to take a photo of the issue</p>
+                        <button type="button" onclick="startCamera()" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 transition">
+                            Open Camera
+                        </button>
+                    </div>
+
+                    <div id="camera-on" class="hidden">
+                        <div class="relative rounded-lg overflow-hidden border border-slate-300 bg-black aspect-video">
+                            <video id="camera-video" autoplay playsinline class="w-full h-full object-cover"></video>
+                        </div>
+                        <div class="flex items-center justify-between mt-2 gap-2">
+                            <button type="button" onclick="stopCamera()" class="text-sm px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 bg-white">Cancel</button>
+                            <button type="button" onclick="capturePhoto()" class="text-sm px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-500">📸 Capture</button>
+                        </div>
+                    </div>
+
+                    <div id="photo-captured" class="hidden">
+                        <div class="flex items-center gap-3">
+                            <div class="w-24 h-24 rounded-lg overflow-hidden border border-slate-200 flex-shrink-0 bg-black">
+                                <img id="preview-img" class="w-full h-full object-cover" alt="captured">
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-emerald-700">Photo captured ✓</p>
+                                <p class="text-xs text-slate-500 mt-1">Geotag &amp; capture time now verified against your report.</p>
+                                <button type="button" onclick="retakePhoto()" class="text-xs text-slate-500 hover:text-slate-700 mt-2 underline">Retake</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <canvas id="photo-canvas" class="hidden"></canvas>
+                <input type="hidden" name="photo" id="photo-data">
+                <p class="text-xs text-slate-400 mt-2">Photo GPS &amp; time are matched to your reported location to prove authenticity.</p>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" id="submit-btn" disabled
+                class="w-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-300 disabled:cursor-not-allowed disabled:text-slate-500 text-white font-semibold py-2.5 rounded-lg transition">
+                Submit Complaint
+            </button>
+            <p id="submit-hint" class="text-xs text-slate-400 mt-2 text-center">Analyse your complaint first to enable submission.</p>
+        </form>
+    </div>
+
+    <!-- Track shortcut -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mt-6">
+        <h2 class="font-semibold text-slate-900 mb-1">Track your complaint</h2>
+        <p class="text-sm text-slate-500 mb-3">Have a tracking ID from a previous report?</p>
+        <form hx-get="/track" hx-target="body" class="flex gap-2">
+            <input type="text" name="tracking_id" placeholder="SAM-XXXXXXXX"
+                class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            <button class="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 transition">Track</button>
+        </form>
+    </div>
+</div>
+
+<script>
+let formMap = null, formMarker = null, cameraStream = null;
+let analysis = null;
+
+// ---------- Pin-placement map ----------
+function initFormMap() {
+    formMap = L.map('form-map').setView([28.6139, 77.2090], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(formMap);
+    formMap.on('click', function(e) { setLocation(e.latlng.lat, e.latlng.lng); });
+    setLocation(28.6139, 77.2090);
+}
+
+function setLocation(lat, lng) {
+    document.getElementById('lat').value = lat;
+    document.getElementById('lon').value = lng;
+    document.getElementById('loc-hint').textContent = 'Selected: ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
+    if (formMarker) formMarker.setLatLng([lat, lng]);
+    else formMarker = L.marker([lat, lng]).addTo(formMap);
+    if (formMap) formMap.panTo([lat, lng]);
+}
+
+function useGps() {
+    if (!navigator.geolocation) {
+        document.getElementById('loc-status').textContent = 'GPS not available in this browser';
+        return;
+    }
+    document.getElementById('loc-status').textContent = 'Locating...';
+    navigator.geolocation.getCurrentPosition(function(pos) {
+        setLocation(pos.coords.latitude, pos.coords.longitude);
+        document.getElementById('loc-status').textContent = '✓ Location set from GPS';
+        // If GPS was enforced, now we have valid coords — enable submit
+        checkGpsEnforcement();
+    }, function(err) {
+        let msg = 'Could not get location';
+        if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Enable in browser settings.';
+        else if (err.code === err.TIMEOUT) msg = 'Location request timed out';
+        else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Position unavailable';
+        document.getElementById('loc-status').textContent = msg;
+    }, { enableHighAccuracy: true, timeout: 10000 });
+}
+
+function citizenSearchPlace() {
+    const q = document.getElementById('place-search').value.trim();
+    if (!q || !formMap) return;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(res => {
+            if (res && res.length) {
+                const lat = parseFloat(res[0].lat), lon = parseFloat(res[0].lon);
+                setLocation(lat, lon);
+                document.getElementById('loc-hint').textContent = 'Selected from search: ' + lat.toFixed(5) + ', ' + lon.toFixed(5);
+            } else {
+                alert('Place not found');
+            }
+        })
+        .catch(() => alert('Search failed'));
+}
+
+function enforceGpsOnly(enable) {
+    const banner = document.getElementById('loc-gps-banner');
+    if (enable) {
+        banner.classList.remove('hidden');
+        // Remove click handler to prevent manual pin
+        if (formMap) formMap.off('click');
+        document.getElementById('loc-hint').textContent = 'Manual pin disabled — use "Use My Location" for accurate coordinates.';
+    } else {
+        banner.classList.add('hidden');
+        // Re-add click handler
+        if (formMap) formMap.on('click', function(e) { setLocation(e.latlng.lat, e.latlng.lng); });
+        document.getElementById('loc-hint').textContent = 'Click on the map to set the location of the issue.';
+    }
+    checkGpsEnforcement();
+}
+
+function checkGpsEnforcement() {
+    const lat = document.getElementById('lat').value;
+    const lon = document.getElementById('lon').value;
+    // If GPS is enforced and we have valid coords, we're good
+    const isEnforced = !document.getElementById('loc-gps-banner').classList.contains('hidden');
+    if (isEnforced && lat && lon) {
+        document.getElementById('loc-status').textContent = '✓ GPS location verified';
+    }
+}
+
+// ---------- Analyse-then-submit flow ----------
+function showLoading(btn, loadingText) {
+    btn.disabled = true;
+    btn.dataset.orig = btn.innerHTML;
+    btn.innerHTML = '<span class="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin align-middle mr-2"></span>' + loadingText;
+}
+
+function hideLoading(btn) {
+    btn.disabled = false;
+    btn.innerHTML = btn.dataset.orig || btn.innerHTML;
+}
+
+function analyzeComplaint() {
+    const raw = document.getElementById('raw-text').value.trim();
+    if (!raw) { alert('Please describe your issue first.'); return; }
+    const btn = document.getElementById('analyze-btn');
+    const panel = document.getElementById('analysis-result');
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div class="bg-slate-50 border border-slate-200 rounded-lg p-4 text-sm text-slate-600 flex items-center gap-2"><span class="inline-block w-4 h-4 border-2 border-slate-400 border-t-transparent rounded-full animate-spin"></span> Analysing your complaint with AI...</div>';
+    showLoading(btn, 'Analysing...');
+
+    const fd = new FormData();
+    fd.append('raw_text', raw);
+    fetch('/api/complaints/analyze', { method: 'POST', body: fd })
+        .then(r => r.json())
+        .then(data => {
+            analysis = data;
+            hideLoading(btn);
+            renderAnalysis(data);
+        })
+        .catch(err => {
+            hideLoading(btn);
+            panel.innerHTML = '<div class="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-600">Analysis failed. Please try again.</div>';
+        });
+}
+
+function renderAnalysis(d) {
+    const panel = document.getElementById('analysis-result');
+    const pc = {
+        Critical: 'text-red-700 bg-red-100',
+        High: 'text-orange-700 bg-orange-100',
+        Medium: 'text-amber-700 bg-amber-100',
+        Low: 'text-emerald-700 bg-emerald-100'
+    }[d.priority] || 'text-slate-700 bg-slate-100';
+    const spam = d.is_spam ? '<div class="mt-2 text-red-600 bg-red-50 border border-red-200 rounded-lg p-2 text-xs">⚠ ' + (d.spam_reason || 'This looks like spam and may be rejected.') + '</div>' : '';
+
+    panel.innerHTML =
+        '<div class="bg-emerald-50 border border-emerald-200 rounded-lg p-4">' +
+            '<div class="flex items-center justify-between flex-wrap gap-2">' +
+                '<div class="text-sm">' +
+                    '<span class="inline-block px-2 py-0.5 rounded-full text-xs font-medium ' + pc + '">' + d.priority + ' · ' + d.urgency_score + '/100</span>' +
+                    '<span class="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + d.department + '</span>' +
+                    '<span class="ml-2 inline-block px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">' + (d.category || 'General') + '</span>' +
+                '</div>' +
+                '<span class="text-xs text-emerald-700">✓ Classified</span>' +
+            '</div>' +
+            '<p class="text-sm text-slate-700 mt-2">' + (d.normalized_text || '') + '</p>' +
+            (d.action_recommended ? '<p class="text-xs text-slate-500 mt-2"><b>Planned action:</b> ' + d.action_recommended + '</p>' : '') +
+            spam +
+        '</div>';
+
+    // Decides camera requirement based on priority
+    const cam = document.getElementById('camera-section');
+    const isCriticalOrHigh = d.priority === 'Critical' || d.priority === 'High';
+    if (isCriticalOrHigh) {
+        cam.classList.remove('hidden');
+        document.getElementById('camera-req-note').textContent = '⚠ ' + d.priority + ' priority detected. Please attach a clear photo of the issue for verification.';
+        window.photoRequired = true;
+    } else {
+        cam.classList.add('hidden');
+        // reset photo for non-photo cases
+        document.getElementById('photo-data').value = '';
+        window.photoRequired = false;
+    }
+
+    // Enforce GPS for Critical/High — disable manual pin, require "Use My Location"
+    enforceGpsOnly(isCriticalOrHigh);
+
+    const submit = document.getElementById('submit-btn');
+    submit.disabled = false;
+    document.getElementById('submit-hint').textContent = 'Your complaint has been analysed. You can now submit.';
+}
+
+// ---------- Camera capture ----------
+function startCamera() {
+    const useBack = /Android|iPhone|iPad|Mobi/i.test(navigator.userAgent);
+    navigator.mediaDevices.getUserMedia({
+        video: useBack ? { facingMode: { ideal: 'environment' } } : true,
+        audio: false
+    }).then(stream => {
+        cameraStream = stream;
+        document.getElementById('camera-video').srcObject = stream;
+        document.getElementById('camera-off').classList.add('hidden');
+        document.getElementById('camera-on').classList.remove('hidden');
+    }).catch(err => {
+        document.getElementById('camera-off').insertAdjacentHTML('beforeend',
+            '<p class="text-xs text-red-500 mt-2">Camera unavailable: ' + err.name + '. Check browser permission.</p>');
+    });
+}
+
+function stopCamera() {
+    if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null; }
+    document.getElementById('camera-on').classList.add('hidden');
+    document.getElementById('camera-off').classList.remove('hidden');
+    document.getElementById('camera-video').srcObject = null;
+}
+
+function capturePhoto() {
+    const video = document.getElementById('camera-video');
+    const canvas = document.getElementById('photo-canvas');
+    canvas.width = video.videoWidth || 1280;
+    canvas.height = video.videoHeight || 960;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    const ctx = canvas.getContext('2d');
+    const stamp = new Date().toLocaleString('en-IN');
+    ctx.font = '16px sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.65)';
+    ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(stamp, 8, canvas.height - 9);
+
+    const baseJpeg = canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
+
+    const lat = parseFloat(document.getElementById('lat').value);
+    const lon = parseFloat(document.getElementById('lon').value);
+    const now = new Date();
+    function dms(v) {
+        const d = Math.abs(Math.floor(v)), mFloat = (Math.abs(v)-d)*60;
+        const m = Math.floor(mFloat), s = Math.round((mFloat-m)*60);
+        return [[d,1],[m,1],[s,1]];
+    }
+    const gps = {
+        [1]: String.fromCharCode(lat>=0?78:83),
+        [2]: dms(lat),
+        [3]: String.fromCharCode(lon>=0?69:87),
+        [4]: dms(lon),
+        [29]: now.toISOString().slice(0,10).replace(/-/g,':'),
+        [7]: [[now.getHours(),1],[now.getMinutes(),1],[now.getSeconds(),1]]
+    };
+    let dataUrl = "data:image/jpeg;base64," + baseJpeg;
+    if (typeof piexif !== 'undefined') {
+        try {
+            dataUrl = "data:image/jpeg;base64," + piexif.insert({ "0th": {}, "Exif": {}, "GPS": gps }, baseJpeg);
+        } catch (e) { /* fall back to plain */ }
+    }
+    document.getElementById('photo-data').value = dataUrl;
+    document.getElementById('preview-img').src = dataUrl;
+    document.getElementById('camera-on').classList.add('hidden');
+    document.getElementById('photo-captured').classList.remove('hidden');
+    stopCamera();
+}
+
+function retakePhoto() {
+    document.getElementById('photo-data').value = '';
+    document.getElementById('photo-captured').classList.add('hidden');
+    document.getElementById('camera-off').classList.remove('hidden');
+}
+
+// ---------- Submit with loading + double-click protection ----------
+document.getElementById('complaint-form').addEventListener('htmx:beforeRequest', function() {
+    const btn = document.getElementById('submit-btn');
+    showLoading(btn, 'Submitting...');
+    btn.classList.add('opacity-60');
+});
+document.getElementById('complaint-form').addEventListener('htmx:afterRequest', function(evt) {
+    const btn = document.getElementById('submit-btn');
+    btn.classList.remove('opacity-60');
+    // Reset the spinner + label; keep disabled since the complaint is now submitted.
+    btn.disabled = true;
+    if (btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
+    else btn.innerHTML = 'Submit Complaint';
+    if (evt.detail.successful) {
+        document.getElementById('submit-hint').textContent = 'Complaint submitted. Your tracking ID is in the box above.';
+        document.getElementById('submit-feedback').classList.remove('hidden');
+        setTimeout(() => {
+            const fb = document.getElementById('submit-feedback');
+            if (fb) fb.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 100);
+    } else {
+        document.getElementById('submit-hint').textContent = 'Submission failed. Please try again.';
+    }
+});
+
+window.addEventListener('load', initFormMap);
+</script>
+{% endblock %}

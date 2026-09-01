@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Samadhan AI{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'ui-sans-serif', 'system-ui'] } } } };
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/piexifjs@1.0.6/piexif.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .leaflet-container { background: #e8edf2; }
+        .leaflet-popup-content-wrapper { border-radius: 10px; }
+        .leaflet-control-attribution { font-size: 9px; background: rgba(255,255,255,.8) !important; }
+        @keyframes pulseRing { 0% { box-shadow: 0 0 0 0 rgba(220,38,38,0.6);} 70% { box-shadow: 0 0 0 12px rgba(220,38,38,0);} 100% { box-shadow: 0 0 0 0 rgba(220,38,38,0);} }
+        .crit-pulse { animation: pulseRing 2s infinite; border-radius: 50%; }
+    </style>
+    <script>
+        function logout(){ window.location.href = '/logout'; }
+
+        // Shared photo-view modal
+        function openPhotoModal(src, caption) {
+            var img = document.getElementById('photo-modal-img');
+            if (!img) return;
+            document.getElementById('photo-modal-img').src = src;
+            document.getElementById('photo-modal-caption').textContent = caption || 'Photo evidence';
+            document.getElementById('photo-modal').classList.remove('hidden');
+        }
+        function closePhotoModal() {
+            var m = document.getElementById('photo-modal');
+            if (!m) return;
+            m.classList.add('hidden');
+            document.getElementById('photo-modal-img').src = '';
+        }
+        function openCardPhoto(event, src, id) {
+            if (event) event.stopPropagation();
+            openPhotoModal(src, 'Photo evidence · ' + id);
+        }
+    </script>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+    {% block body %}{% endblock %}
+    <div id="photo-modal" class="hidden fixed inset-0 z-[1000] bg-black/80 flex items-center justify-center p-6" onclick="if(event.target===this)closePhotoModal()">
+        <div class="max-w-2xl w-full bg-white rounded-xl overflow-hidden">
+            <img id="photo-modal-img" src="" class="w-full max-h-[70vh] object-contain bg-black" alt="evidence">
+            <div class="p-3 flex items-center justify-between bg-white">
+                <span id="photo-modal-caption" class="text-sm text-slate-600"></span>
+                <button onclick="closePhotoModal()" class="text-sm px-3 py-1 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50">Close</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

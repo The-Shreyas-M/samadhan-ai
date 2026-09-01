@@ -1,0 +1,88 @@
+{% if complaint is none %}
+<div class="rounded-xl border p-4 border-red-300 bg-red-50">
+    <div class="flex items-start gap-3">
+        <div class="text-2xl">🚫</div>
+        <div class="flex-1">
+            <p class="font-semibold text-red-800">Submission blocked</p>
+            <p class="text-sm text-red-700 mt-1">{{ spam_message or 'Your submission could not be processed.' }}</p>
+        </div>
+    </div>
+    <button onclick="document.getElementById('submit-feedback').classList.add('hidden'); this.parentElement.remove()" class="text-xs text-slate-500 hover:text-slate-700 mt-2">Dismiss</button>
+</div>
+{% else %}
+<div class="rounded-xl border p-4 {{ 'border-red-300 bg-red-50' if is_flagged else 'border-amber-300 bg-amber-50' if is_duplicate else 'border-emerald-200 bg-emerald-50' }}">
+    <div class="flex items-start gap-3">
+        <div class="text-2xl">{{ '🚩' if is_flagged else '⚠️' if is_duplicate else '✅' }}</div>
+        <div class="flex-1">
+            {% if is_flagged %}
+                <p class="font-semibold text-red-800">Flagged for review</p>
+                <p class="text-sm text-red-700 mt-1">{{ flag_reason }}</p>
+                <p class="text-xs text-red-500 mt-1">Your complaint has been held in a review queue and will not be dispatched until verified.</p>
+            {% elif is_duplicate %}
+                <p class="font-semibold text-amber-800">Duplicate issue detected</p>
+                <p class="text-sm text-amber-700 mt-1">This appears to be the same issue as complaint <b>#{{ parent_id }}</b>. It has been grouped with the existing report.</p>
+            {% else %}
+                <p class="font-semibold text-emerald-800">Complaint submitted successfully</p>
+            {% endif %}
+
+            <div class="mt-3 bg-white rounded-lg border border-slate-200 p-3">
+                <div class="text-xs text-slate-500 mb-1">Your tracking ID</div>
+                <div class="font-mono text-lg font-bold text-emerald-700">{{ complaint.tracking_id }}</div>
+                <div class="text-xs text-slate-500 mt-1">Save this ID to track your complaint's status.</div>
+            </div>
+
+            <div class="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div class="bg-white border border-slate-200 rounded-lg p-2">
+                    <div class="text-slate-500">Department</div>
+                    <div class="font-medium text-slate-800">{{ complaint.department }}</div>
+                </div>
+                <div class="bg-white border border-slate-200 rounded-lg p-2">
+                    <div class="text-slate-500">Priority</div>
+                    <div class="font-medium text-slate-800">{{ complaint.priority }} ({{ complaint.urgency_score }}/100)</div>
+                </div>
+            </div>
+
+            {% if complaint.photo_path %}
+            <div class="mt-2 bg-white border border-slate-200 rounded-lg p-2 text-xs">
+                <div class="text-slate-500">Photo evidence</div>
+                <div class="font-medium {{ 'text-emerald-700' if evidence_verified else 'text-amber-700' }}">
+                    {{ '✓ Location verified' if evidence_verified else '⚠ ' + (evidence_note or 'Not verified') }}
+                </div>
+                {% if complaint.photo_taken_at %}<div class="text-slate-400 mt-1">Captured {{ complaint.photo_taken_at }}</div>{% endif %}
+            </div>
+            {% endif %}
+
+                {% if action_recommended %}
+                    <p class="text-sm text-slate-700 mt-3"><b>Planned action:</b> {{ action_recommended }}</p>
+                {% endif %}
+
+                {% if vision_result is not none or ai_gen_result is not none %}
+                <div class="mt-2 bg-white border border-slate-200 rounded-lg p-2 text-xs">
+                    <div class="text-slate-500">Visual verification</div>
+                    {% if vision_result %}
+                        {% if vision_result.status == 'match' %}
+                            <div class="font-medium text-emerald-700">✓ AI confirms photo matches the reported issue</div>
+                        {% elif vision_result.status == 'mismatch' %}
+                            <div class="font-medium text-red-700">✗ AI could not confirm photo matches the report</div>
+                        {% elif vision_result.status == 'unclear' %}
+                            <div class="font-medium text-amber-700">⚠ AI could not clearly verify the photo</div>
+                        {% else %}
+                            <div class="font-medium text-amber-700">Visual check inconclusive</div>
+                        {% endif %}
+                        {% if vision_result.note %}<div class="text-slate-400 mt-1">{{ vision_result.note }}</div>{% endif %}
+                    {% endif %}
+                    {% if ai_gen_result and ai_gen_result.is_ai %}
+                        <div class="font-medium text-red-700 mt-1">Possible AI-generated image detected (score {{ ai_gen_result.score }})</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+
+            <div class="mt-3">
+                <a href="/track/{{ complaint.tracking_id }}" class="text-sm font-medium text-emerald-600 hover:text-emerald-700">Track this complaint →</a>
+            </div>
+        </div>
+    </div>
+    <button onclick="this.parentElement.remove()" class="text-xs text-slate-500 hover:text-slate-700 mt-2">Dismiss</button>
+</div>
+{% endif %}

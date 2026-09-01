@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Staff Login | Samadhan AI{% endblock %}
+{% block body %}
+<div class="min-h-screen flex items-center justify-center px-4">
+    <div class="w-full max-w-md">
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-8">
+            <div class="flex items-center gap-3 mb-6">
+                <div class="w-10 h-10 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold text-xl">S</div>
+                <div>
+                    <h1 class="text-xl font-bold text-slate-900">Samadhan<span class="text-emerald-600">AI</span></h1>
+                    <p class="text-xs text-slate-400">Department Staff Portal</p>
+                </div>
+            </div>
+
+            {% if error %}
+                <div class="mb-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST" action="/login">
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Username</label>
+                    <input type="text" name="username" required autofocus
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                    <input type="password" name="password" required
+                        class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                </div>
+                <button type="submit" class="w-full bg-slate-900 hover:bg-slate-700 text-white font-semibold py-2.5 rounded-lg transition">
+                    Sign In
+                </button>
+            </form>
+
+            <div class="mt-6 pt-4 border-t border-slate-100">
+                <p class="text-xs text-slate-400 font-medium mb-2">Demo credentials (default passwords):</p>
+                <div class="text-xs text-slate-500 space-y-1 font-mono">
+                    <div><span class="font-medium text-slate-700">Admin:</span> admin / admin123</div>
+                    <div><span class="font-medium text-slate-700">Police:</span> police / police123</div>
+                    <div><span class="font-medium text-slate-700">Fire:</span> fire / fire123</div>
+                    <div><span class="font-medium text-slate-700">Water:</span> water / water123</div>
+                    <div><span class="font-medium text-slate-700">Roads:</span> roads / roads123</div>
+                </div>
+            </div>
+        </div>
+        <p class="text-center text-xs text-slate-400 mt-4"><a href="/" class="hover:text-slate-600">← Back to citizen portal</a></p>
+    </div>
+</div>
+{% endblock %}

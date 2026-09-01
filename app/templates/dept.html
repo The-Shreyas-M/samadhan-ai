@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}{{ dept.short }} Dashboard | Samadhan AI{% endblock %}
+{% block body %}
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-lg" style="background:{{ dept.color }}">S</div>
+            <div>
+                <span class="font-semibold text-slate-900">{{ dept.name }}</span>
+                <span class="block text-xs text-slate-400">{{ user.name }}</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            {% if user.role == 'admin' %}
+                <a href="/admin" class="text-sm text-slate-600 hover:text-slate-900">Admin Dashboard</a>
+            {% endif %}
+            <a href="/" target="_blank" class="text-sm text-slate-600 hover:text-slate-900">Citizen Portal</a>
+            <button onclick="logout()" class="text-sm px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-4 py-6 w-full">
+    <!-- KPI cards -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6" id="dept-stats" hx-get="/api/dashboard/stats-dept?key={{ dept.key }}" hx-trigger="load, updateStats from:body" hx-swap="innerHTML">
+    </div>
+
+    <!-- Department map + filters -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="font-semibold text-slate-900">Complaints Map — {{ dept.short }}</h3>
+            <div class="flex items-center gap-2">
+                <input id="place-search" type="text" placeholder="Search a place..."
+                    class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none w-64">
+                <button onclick="searchPlace()" class="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700">Search</button>
+            </div>
+        </div>
+        <div id="dept-map" class="h-[400px] w-full rounded-xl overflow-hidden border border-slate-200"></div>
+        <div class="flex flex-wrap items-center gap-2 mt-4">
+            <select id="f-status" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="all">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+            </select>
+            <select id="f-priority" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="all">All priorities</option>
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+            </select>
+            <select id="f-category" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="all">All classifications</option>
+            </select>
+            <span class="text-xs text-slate-400 ml-auto">Filters apply to both map &amp; list</span>
+        </div>
+    </div>
+
+    <!-- List -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-900">Department Complaints</h3>
+            <span class="text-xs text-slate-400" id="list-count"></span>
+        </div>
+        <div id="dept-list" hx-get="/api/dashboard/dept-filter?key={{ dept.key }}" hx-trigger="load" hx-include="#f-status,#f-priority,#f-category" hx-swap="innerHTML"></div>
+    </div>
+</div>
+
+<script>
+let deptMap = null, deptMarkers = [];
+function colorMap(j) { return { Critical:'#dc2626', High:'#ea580c', Medium:'#d97706', Low:'#059669' }[j] || '#64748b'; }
+
+function initMap() {
+    if (deptMap) return;
+    deptMap = L.map('dept-map').setView([28.6139, 77.2090], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(deptMap);
+    loadMapPoints();
+}
+
+function loadMapPoints() {
+    const params = new URLSearchParams({
+        key: '{{ dept.key }}',
+        status: document.getElementById('f-status').value,
+        priority: document.getElementById('f-priority').value,
+        category: document.getElementById('f-category').value
+    });
+    fetch('/api/dashboard/dept-map-points?' + params).then(r => r.json()).then(renderPoints).catch(console.error);
+}
+
+function renderPoints(points) {
+    deptMarkers.forEach(m => m.remove());
+    deptMarkers = [];
+    document.getElementById('list-count').textContent = points.length + ' complaints on map';
+    points.forEach(p => {
+        const color = colorMap(p.priority);
+        const size = p.priority === 'Critical' ? 18 : 14;
+        const pulse = p.priority === 'Critical' ? ' crit-pulse' : '';
+        const icon = L.divIcon({ className: '', html: '<div class="' + pulse + '" style="width:' + size + 'px;height:' + size + 'px;background:' + color + ';border:2px solid #fff;border-radius:50%;"></div>' });
+        const photo = p.photo ? '<div class="my-2"><img src="' + p.photo + '" class="w-28 h-20 object-cover rounded cursor-pointer" onclick="openPhotoModal(\'' + p.photo + '\',\'Photo evidence · ' + p.tracking_id + '\')"></div>' : '<div class="text-xs text-slate-400 my-1">No photo</div>';
+        const m = L.marker([p.lat, p.lon], { icon: icon }).addTo(deptMap);
+        m.bindPopup(
+            '<b>' + p.tracking_id + '</b> ' + (p.flagged?'<span style="color:red">🚩</span>':'') +
+            '<br>' + p.priority + ' · ' + p.department +
+            '<br>' + (p.category || '') + ' · ' + p.status +
+            (p.is_duplicate ? '<br><i>Duplicate</i>' : '') +
+            photo +
+            '<br><a href="#complaint-' + p.id + '" onclick="this.closest(\'.leaflet-popup\').remove()">View details ↓</a>'
+        );
+        deptMarkers.push(m);
+    });
+}
+
+function searchPlace() {
+    const q = document.getElementById('place-search').value.trim();
+    if (!q || !deptMap) return;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(res => { if (res && res.length) deptMap.setView([parseFloat(res[0].lat), parseFloat(res[0].lon)], 14); else alert('Place not found'); })
+        .catch(() => alert('Search failed'));
+}
+
+function reloadList() { htmx.trigger(document.getElementById('dept-list'), 'load'); }
+function refreshFilters() { loadMapPoints(); reloadList(); }
+
+document.getElementById('f-status').addEventListener('change', refreshFilters);
+document.getElementById('f-priority').addEventListener('change', refreshFilters);
+document.getElementById('f-category').addEventListener('change', refreshFilters);
+
+let mapRefreshTimer = null;
+function startMapRefresh() {
+    if (mapRefreshTimer) clearInterval(mapRefreshTimer);
+    mapRefreshTimer = setInterval(loadMapPoints, 15000);
+}
+function stopMapRefresh() {
+    if (mapRefreshTimer) clearInterval(mapRefreshTimer);
+    mapRefreshTimer = null;
+}
+
+window.addEventListener('load', () => { initMap(); startMapRefresh(); });
+window.addEventListener('refreshMap', () => { setTimeout(reloadList, 300); htmx.trigger(document.getElementById('dept-stats'), 'load'); loadMapPoints(); });
+window.addEventListener('beforeunload', stopMapRefresh);
+
+fetch('/api/dashboard/categories').then(r => r.json()).then(d => {
+    const sel = document.getElementById('f-category');
+    d.categories.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c; sel.appendChild(o);
+    });
+});
+</script>
+{% endblock %}

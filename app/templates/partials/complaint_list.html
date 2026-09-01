@@ -1,0 +1,9 @@
+{% if complaints %}
+    <div class="space-y-3">
+        {% for complaint in complaints %}
+            {% include "partials/complaint_card.html" %}
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center py-10 text-slate-400 text-sm">No complaints match the current filters.</div>
+{% endif %}

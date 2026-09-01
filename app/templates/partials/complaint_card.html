@@ -1,0 +1,74 @@
+{% set pc = {
+    "Critical": "bg-red-100 text-red-700 border-red-200",
+    "High": "bg-orange-100 text-orange-700 border-orange-200",
+    "Medium": "bg-amber-100 text-amber-700 border-amber-200",
+    "Low": "bg-emerald-100 text-emerald-700 border-emerald-200"
+}.get(complaint.priority, "bg-slate-100 text-slate-700 border-slate-200") %}
+{% set sc = {
+    "Pending": "bg-slate-100 text-slate-600",
+    "In Progress": "bg-blue-100 text-blue-700",
+    "Resolved": "bg-emerald-100 text-emerald-700"
+}.get(complaint.status, "bg-slate-100 text-slate-600") %}
+<article id="complaint-{{ complaint.id }}" class="{{ 'bg-red-50 border-red-200' if complaint.flagged else 'bg-white border-slate-200' }} border rounded-xl p-4 shadow-sm">
+    <div class="flex items-center justify-between gap-2 flex-wrap">
+        <div class="flex items-center gap-2 flex-wrap">
+            <span class="font-mono text-xs text-slate-400">{{ complaint.tracking_id }}</span>
+            {% if complaint.flagged %}
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-600 text-white">🚩 Flagged</span>
+            {% endif %}
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium border {{ pc }}">{{ complaint.priority }}</span>
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">{{ complaint.category }}</span>
+            {% if complaint.is_duplicate %}
+                <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">Duplicate</span>
+            {% endif %}
+        </div>
+        <div class="flex items-center gap-3">
+            <span class="px-2 py-0.5 rounded-full text-xs font-medium {{ sc }}">{{ complaint.status }}</span>
+            <div class="text-right">
+                <div class="text-lg font-bold text-slate-900 leading-none">{{ complaint.urgency_score }}</div>
+                <div class="text-[9px] uppercase text-slate-400">urgency</div>
+            </div>
+        </div>
+    </div>
+
+    <p class="text-sm text-slate-700 mt-3">{{ complaint.raw_text }}</p>
+    {% if complaint.normalized_text and complaint.normalized_text != complaint.raw_text %}
+        <p class="text-xs text-slate-400 italic mt-1">{{ complaint.normalized_text }}</p>
+    {% endif %}
+
+    <div class="text-xs text-slate-400 mt-2">
+        {{ complaint.lat|round(4) }}, {{ complaint.lon|round(4) }} · {{ complaint.created_at.strftime('%d %b %Y %H:%M') if complaint.created_at else '' }}
+    </div>
+
+    {% if complaint.flagged and complaint.flag_reason %}
+        <div class="mt-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-2">Reason: {{ complaint.flag_reason }}</div>
+    {% endif %}
+
+    {% if complaint.photo_path %}
+        {% set purl = complaint.photo_path | photo_url %}
+        <div class="mt-2 text-xs flex items-center gap-2">
+            <span class="inline-block w-9 h-9 rounded overflow-hidden border border-slate-200">
+                <img src="{{ purl }}" class="w-full h-full object-cover" alt="evidence" onclick="openCardPhoto(event, '{{ purl }}', '{{ complaint.tracking_id }}')" style="cursor:pointer">
+            </span>
+            <span class="{{ 'text-emerald-600' if complaint.evidence_verified else 'text-amber-600' }}">
+                {{ '✓ Verified location' if complaint.evidence_verified else '⚠ ' + (complaint.evidence_note or 'Photo not verified') }}
+            </span>
+            <button onclick="openCardPhoto(event, '{{ purl }}', '{{ complaint.tracking_id }}')"
+                class="ml-auto text-xs px-2 py-1 border border-slate-300 rounded text-slate-600 hover:bg-slate-100">View 🔍</button>
+        </div>
+    {% endif %}
+
+    <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
+        <span class="text-xs text-slate-400">Dept: {{ complaint.department }}</span>
+        {% if complaint.status != 'Resolved' %}
+            <select name="status" hx-patch="/api/complaints/{{ complaint.id }}/status" hx-target="#complaint-{{ complaint.id }}" hx-swap="outerHTML"
+                class="border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none">
+                <option value="Pending" {{ 'selected' if complaint.status == 'Pending' }}>Pending</option>
+                <option value="In Progress" {{ 'selected' if complaint.status == 'In Progress' }}>In Progress</option>
+                <option value="Resolved" {{ 'selected' if complaint.status == 'Resolved' }}>Resolved</option>
+            </select>
+        {% else %}
+            <span class="text-xs font-medium text-emerald-600">Resolved</span>
+        {% endif %}
+    </div>
+</article>

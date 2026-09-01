@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Track Complaint | Samadhan AI{% endblock %}
+{% block body %}
+
+<nav class="bg-white border-b border-slate-200">
+    <div class="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2 text-slate-700 font-semibold">
+            <span class="w-8 h-8 rounded-lg bg-emerald-600 flex items-center justify-center text-white font-bold">S</span>
+            Samadhan<span class="text-emerald-600">AI</span>
+        </a>
+        <a href="/" class="text-sm text-slate-500 hover:text-slate-800">&larr; Back</a>
+    </div>
+</nav>
+
+<div class="max-w-2xl mx-auto px-4 py-10 w-full">
+    {% if error %}
+        <div class="bg-amber-50 border border-amber-200 text-amber-700 rounded-xl p-4 mb-6">{{ error }}</div>
+    {% endif %}
+
+    <!-- Lookup form -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mb-8">
+        <h2 class="font-semibold text-slate-900 mb-3">Check complaint status</h2>
+        <form method="GET" class="flex gap-2">
+            <input type="text" name="tracking_id" placeholder="Enter tracking ID (e.g. SAM-XXXXXXXX)"
+                class="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-emerald-500 outline-none">
+            <button class="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700 transition">Check</button>
+        </form>
+    </div>
+
+    {% if complaint %}
+    {% set pc = {"Critical": "bg-red-100 text-red-700 border-red-200","High": "bg-orange-100 text-orange-700 border-orange-200","Medium": "bg-amber-100 text-amber-700 border-amber-200","Low": "bg-emerald-100 text-emerald-700 border-emerald-200"}.get(complaint.priority, "bg-slate-100 text-slate-700 border-slate-200") %}
+    {% set sc = {"Pending": "bg-slate-100 text-slate-600","In Progress": "bg-blue-100 text-blue-700","Resolved": "bg-emerald-100 text-emerald-700"}.get(complaint.status, "bg-slate-100 text-slate-600") %}
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+            <div>
+                <h2 class="text-lg font-bold text-slate-900">Complaint {{ complaint.tracking_id }}</h2>
+                <p class="text-xs text-slate-400">Submitted {{ complaint.created_at.strftime('%d %b %Y %H:%M') if complaint.created_at else '' }}</p>
+            </div>
+            <span class="px-3 py-1 rounded-full text-sm font-medium {{ sc }}">{{ complaint.status }}</span>
+        </div>
+
+        <div class="mb-4">
+            <p class="text-sm text-slate-500 mb-1">Your report</p>
+            <p class="text-slate-800">{{ complaint.raw_text }}</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="border border-slate-200 rounded-lg p-3">
+                <div class="text-xs text-slate-400 mb-1">Department</div>
+                <div class="text-sm font-medium text-slate-800">{{ complaint.department }}</div>
+                {% if complaint.category %}<div class="text-xs text-slate-400 mt-1">{{ complaint.category }}</div>{% endif %}
+            </div>
+            <div class="border border-slate-200 rounded-lg p-3">
+                <div class="text-xs text-slate-400 mb-1">Priority</div>
+                <span class="text-xs px-2 py-0.5 rounded-full border {{ pc }}">{{ complaint.priority }}</span>
+                <span class="text-xs text-slate-400 ml-1">({{ complaint.urgency_score }}/100)</span>
+            </div>
+        </div>
+
+        {% if complaint.is_duplicate %}
+            <div class="mb-4 bg-purple-50 border border-purple-200 text-purple-700 text-sm rounded-lg p-3">
+                ⚠️ This complaint was matched as a duplicate of an existing issue (cluster #{{ complaint.parent_cluster_id }}) and grouped accordingly.
+            </div>
+        {% endif %}
+
+        {% if status_history %}
+        <div class="mt-5 pt-4 border-t border-slate-100">
+            <h3 class="text-sm font-semibold text-slate-800 mb-3">Status history</h3>
+            <div class="space-y-3">
+                {% for h in status_history %}
+                    <div class="flex gap-3">
+                        <div class="w-2 h-2 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0"></div>
+                        <div>
+                            <div class="text-sm text-slate-700"><b>{{ h.status }}</b></div>
+                            <div class="text-xs text-slate-400">by {{ h.by }} · {{ h.at }}</div>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

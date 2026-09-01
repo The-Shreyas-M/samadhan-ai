@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}Admin Dashboard | Samadhan AI{% endblock %}
+{% block body %}
+<nav class="bg-white border-b border-slate-200 sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold text-lg">S</div>
+            <div>
+                <span class="font-semibold text-slate-900">Admin Control Center</span>
+                <span class="block text-xs text-slate-400">{{ user.name }}</span>
+            </div>
+        </div>
+        <div class="flex items-center gap-3">
+            <a href="/" target="_blank" class="text-sm text-slate-600 hover:text-slate-900">Citizen Portal</a>
+            <button onclick="logout()" class="text-sm px-3 py-1.5 border border-slate-300 rounded-lg text-slate-600 hover:bg-slate-50 transition">Logout</button>
+        </div>
+    </div>
+</nav>
+
+<div class="max-w-7xl mx-auto px-4 py-6 w-full">
+    <!-- Department tiles -->
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 mb-6" id="dept-tiles" hx-get="/api/dashboard/stats-all" hx-trigger="load, updateStats from:body" hx-swap="innerHTML">
+    </div>
+
+    <!-- Charts -->
+    <div class="grid lg:grid-cols-3 gap-6 mb-6">
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <h3 class="font-semibold text-slate-900 mb-3 text-sm">Complaints by Department</h3>
+            <canvas id="deptChart" height="220"></canvas>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <h3 class="font-semibold text-slate-900 mb-3 text-sm">Priority Distribution</h3>
+            <canvas id="priorityChart" height="220"></canvas>
+        </div>
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <h3 class="font-semibold text-slate-900 mb-3 text-sm">7-Day Trend</h3>
+            <canvas id="trendChart" height="220"></canvas>
+        </div>
+    </div>
+
+    <!-- Filter bar (drives both list and map) -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5 mb-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 class="font-semibold text-slate-900">GIS Complaints Map</h3>
+            <div id="map-search" class="flex items-center gap-2">
+                <input id="place-search" type="text" placeholder="Search a place (e.g. India Gate, Connaught Place)..."
+                    class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none w-72">
+                <button onclick="searchPlace()" class="px-3 py-1.5 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-700">Search</button>
+            </div>
+        </div>
+        <div id="admin-map" class="h-[420px] w-full rounded-xl overflow-hidden border border-slate-200"></div>
+        <div class="flex flex-wrap items-center gap-2 mt-4">
+            <select id="f-dept" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="">All departments</option>
+                {% for d in departments %}
+                    <option value="{{ d.key }}">{{ d.short }}</option>
+                {% endfor %}
+            </select>
+            <select id="f-status" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="all">All statuses</option>
+                <option value="Pending">Pending</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Resolved">Resolved</option>
+            </select>
+            <select id="f-priority" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="all">All priorities</option>
+                <option value="Critical">Critical</option>
+                <option value="High">High</option>
+                <option value="Medium">Medium</option>
+                <option value="Low">Low</option>
+            </select>
+            <select id="f-category" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="all">All classifications</option>
+            </select>
+            <select id="f-flagged" class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none">
+                <option value="">All status flags</option>
+                <option value="1">🚩 Flagged / Suspicious</option>
+                <option value="0">Verified (not flagged)</option>
+            </select>
+            <span class="text-xs text-slate-400 ml-auto">Filters apply to both map &amp; list</span>
+        </div>
+    </div>
+
+    <!-- List -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-slate-900">All Complaints</h3>
+            <span class="text-xs text-slate-400" id="list-count"></span>
+        </div>
+        <div id="admin-list" hx-get="/api/dashboard/admin-list" hx-trigger="load" hx-include="#f-dept,#f-status,#f-priority,#f-category,#f-flagged" hx-swap="innerHTML"></div>
+    </div>
+</div>
+
+<script>
+let adminMap = null, adminMarkers = [];
+function colorMap(j) { return { Critical:'#dc2626', High:'#ea580c', Medium:'#d97706', Low:'#059669' }[j] || '#64748b'; }
+
+function initCharts() {
+    fetch('/api/dashboard/chart-data').then(r => r.json()).then(data => {
+        new Chart(document.getElementById('deptChart'), {
+            type: 'bar',
+            data: { labels: data.dept_labels, datasets: [{ label: 'Complaints', data: data.dept_values, backgroundColor: data.dept_colors, borderRadius: 6 }] },
+            options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+        new Chart(document.getElementById('priorityChart'), {
+            type: 'doughnut',
+            data: { labels: data.pri_labels, datasets: [{ data: data.pri_values, backgroundColor: ['#dc2626','#ea580c','#d97706','#059669'] }] }
+        });
+        new Chart(document.getElementById('trendChart'), {
+            type: 'line',
+            data: { labels: data.trend_labels, datasets: [{ label: 'New complaints', data: data.trend_values, borderColor: '#059669', backgroundColor: 'rgba(5,150,105,.1)', fill: true, tension: .3 }] },
+            options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+        });
+    });
+}
+
+function initMap() {
+    if (adminMap) return;
+    adminMap = L.map('admin-map').setView([28.6139, 77.2090], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(adminMap);
+    loadMapPoints();
+}
+
+function loadMapPoints() {
+    const params = new URLSearchParams({
+        dept: document.getElementById('f-dept').value,
+        status: document.getElementById('f-status').value,
+        priority: document.getElementById('f-priority').value,
+        category: document.getElementById('f-category').value,
+        flagged: document.getElementById('f-flagged').value
+    });
+    fetch('/api/dashboard/admin-map-points?' + params).then(r => r.json()).then(renderPoints).catch(console.error);
+}
+
+function renderPoints(points) {
+    adminMarkers.forEach(m => m.remove());
+    adminMarkers = [];
+    document.getElementById('list-count').textContent = points.length + ' complaints on map';
+    points.forEach(p => {
+        const color = colorMap(p.priority);
+        const size = p.priority === 'Critical' ? 18 : 14;
+        const pulse = p.priority === 'Critical' ? ' crit-pulse' : '';
+        const icon = L.divIcon({ className: '', html: '<div class="' + pulse + '" style="width:' + size + 'px;height:' + size + 'px;background:' + color + ';border:2px solid #fff;border-radius:50%;"></div>' });
+        const photo = p.photo ? '<div class="my-2"><img src="' + p.photo + '" class="w-28 h-20 object-cover rounded cursor-pointer" onclick="openPhotoModal(\'' + p.photo + '\',\'Photo evidence · ' + p.tracking_id + '\')"></div>' : '<div class="text-xs text-slate-400 my-1">No photo</div>';
+        const m = L.marker([p.lat, p.lon], { icon: icon }).addTo(adminMap);
+        m.bindPopup(
+            '<b>' + p.tracking_id + '</b> ' + (p.flagged?'<span style="color:red">🚩</span>':'') +
+            '<br>' + p.priority + ' · ' + p.department +
+            '<br>' + (p.category || '') + ' · ' + p.status +
+            (p.is_duplicate ? '<br><i>Duplicate</i>' : '') +
+            photo +
+            '<br><a href="#complaint-' + p.id + '" onclick="this.closest(\'.leaflet-popup\').remove()">View details ↓</a>'
+        );
+        adminMarkers.push(m);
+    });
+}
+
+function searchPlace() {
+    const q = document.getElementById('place-search').value.trim();
+    if (!q || !adminMap) return;
+    fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(res => {
+            if (res && res.length) { adminMap.setView([parseFloat(res[0].lat), parseFloat(res[0].lon)], 14); }
+            else { alert('Place not found'); }
+        })
+        .catch(() => alert('Search failed'));
+}
+
+function reloadList() {
+    const el = document.getElementById('admin-list');
+    htmx.trigger(el, 'load');
+}
+
+function refreshFilters() {
+    loadMapPoints();
+    reloadList();
+}
+
+document.getElementById('f-dept').addEventListener('change', refreshFilters);
+document.getElementById('f-status').addEventListener('change', refreshFilters);
+document.getElementById('f-priority').addEventListener('change', refreshFilters);
+document.getElementById('f-category').addEventListener('change', refreshFilters);
+document.getElementById('f-flagged').addEventListener('change', refreshFilters);
+
+let mapRefreshTimer = null;
+function startMapRefresh() {
+    if (mapRefreshTimer) clearInterval(mapRefreshTimer);
+    mapRefreshTimer = setInterval(loadMapPoints, 15000);
+}
+function stopMapRefresh() {
+    if (mapRefreshTimer) clearInterval(mapRefreshTimer);
+    mapRefreshTimer = null;
+}
+
+window.addEventListener('load', () => { initCharts(); initMap(); startMapRefresh(); });
+window.addEventListener('refreshMap', () => { setTimeout(reloadList, 300); htmx.trigger(document.getElementById('dept-tiles'), 'load'); loadMapPoints(); });
+window.addEventListener('beforeunload', stopMapRefresh);
+
+// populate category filter
+fetch('/api/dashboard/categories').then(r => r.json()).then(d => {
+    const sel = document.getElementById('f-category');
+    d.categories.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c; o.textContent = c; sel.appendChild(o);
+    });
+});
+</script>
+{% endblock %}
