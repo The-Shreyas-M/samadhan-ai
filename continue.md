@@ -179,7 +179,7 @@ Related to Bug 1 — the broken photo URL causes image load to fail in both the 
 
 ---
 
-## 5.5 IMPORTANT — LLM Classification Is Silently Falling Back to Keywords ⚠️
+## 5.5 IMPORTANT — LLM Classification Was Silently Falling Back to Keywords ✅ FIXED
 
 **Root cause found (this is why department/category always look generic):**
 
@@ -193,13 +193,9 @@ Related to Bug 1 — the broken photo URL causes image load to fail in both the 
   - `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` ✅
 - **Broken for this key (404):** `nvidia/llama-3.1-nemotron-70b-instruct`, `nvidia/llama3-chatqa-1.5-70b`, `nvidia/nemotron-nano-3-30b-a3b`, `nvidia/nemotron-4-340b-instruct`
 
-**To do next session:**
-1. Set `NVIDIA_MODEL="nvidia/nemotron-3-super-120b-a12b"` in `.env` (must restart server — `.env` is read at import time).
-2. Harden `app/ai_service.py`:
-   - Log the real exception (`logger.warning(...)`) instead of swallowing it (`except Exception: return keyword_classify(...)`).
-   - Make the keyword fallback emit real categories + varied urgency instead of `"General"` / fixed 70-50.
-   - Fix `_resolve_department` to only return `roads` as a true last resort (not when `department_key` is missing from an otherwise-valid LLM reply).
-3. Restart server and verify `POST /api/complaints/analyze` returns varied `category`/`urgency_score`/natural `action_recommended` (heart attack → health, gas leak → fire, theft → police).
+**Status: ✅ FIXED & verified 2026-09-01** — `.env` now set to `NVIDIA_MODEL="nvidia/nemotron-3-super-120b-a12b"`; `ai_service.py` logs the real exception on LLM failure, the keyword fallback returns per-department categories + varied urgency/priority, and `_resolve_department` returns roads only when no valid department matches. Verified from a fresh process (health→Critical/95, fire→Critical/90, theft→police/High/70, pothole→roads/Medium/60, bijli→electricity/High/75) and via `/api/complaints/analyze` (TestClient, 200 OK).
+
+**Remaining:** the long-running server must be **restarted** to pick up the new `.env` model + code (it predates the fix and still uses keyword fallback).
 
 ---
 

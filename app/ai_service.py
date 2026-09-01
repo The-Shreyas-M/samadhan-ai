@@ -1,6 +1,7 @@
 import os
 import json
 import re
+import logging
 import numpy as np
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
@@ -9,6 +10,8 @@ from dotenv import load_dotenv
 from app.departments import DEPARTMENTS, DEPARTMENT_MAP, VALID_DEPARTMENTS
 
 load_dotenv()
+
+logger = logging.getLogger("samadhan.ai_service")
 
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 NVIDIA_BASE_URL = os.getenv("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
@@ -105,18 +108,37 @@ KEYWORD_MAP = [
 def keyword_classify(raw_text: str) -> dict:
     text = raw_text.lower()
     alphabetic = sum(1 for ch in raw_text if ch.isalpha())
-    # Gibberish / spam heuristic when API is unavailable
     gibberish = alphabetic < 4
+
+    # Sensible category / priority / urgency per department when the LLM is down.
+    FALLBACK_PROFILE = {
+        "health":     ("Medical Emergency",       "Critical", 90),
+        "fire":       ("Fire & Gas Leak",         "Critical", 88),
+        "police":     ("Law & Order",             "High",     78),
+        "water":      ("Water Supply / Drainage", "High",     65),
+        "electricity":("Power Outage",            "High",     68),
+        "transport":  ("Traffic & Transport",     "High",     62),
+        "social":     ("Social Welfare",          "High",     60),
+        "sanitation": ("Solid Waste",             "Medium",   52),
+        "roads":      ("Roads & Infrastructure",  "Medium",   55),
+        "planning":   ("Construction / Encroachment", "Medium", 55),
+        "environment":("Environment & Pollution", "Medium",   50),
+        "education":  ("Education",               "Medium",   50),
+    }
+
     for key, keywords in KEYWORD_MAP:
         if any(kw in text for kw in keywords):
             dept = DEPARTMENT_MAP[key]
+            category, priority, urgency = FALLBACK_PROFILE.get(
+                key, ("General", "Medium", 55)
+            )
             return {
                 "department": dept["name"],
                 "department_key": key,
-                "category": "General",
+                "category": category,
                 "normalized_text": raw_text.strip(),
-                "priority": "High",
-                "urgency_score": 70,
+                "priority": priority,
+                "urgency_score": urgency,
                 "action_recommended": f"Dispatch {dept['short']} team for assessment.",
                 "is_spam": gibberish,
                 "spam_reason": "Input appears to be gibberish" if gibberish else None,
@@ -138,14 +160,41 @@ def keyword_classify(raw_text: str) -> dict:
 def _resolve_department(name: str, key: str = None) -> tuple:
     if key and key in DEPARTMENT_MAP:
         return DEPARTMENT_MAP[key]
-    for d in DEPARTMENTS:
-        if name and (d["name"].lower() == name.lower() or d["short"].lower() in name.lower()):
-            return d
-    return DEPARTMENT_MAP["roads"]
+    if name:
+        for d in DEPARTMENTS:
+            if d["name"].lower() == name.lower() or d["short"].lower() in name.lower():
+                return d
+    return None
+
+
+def _normalize_classification(data: dict, raw_text: str) -> dict:
+    dept = _resolve_department(data.get("department"), data.get("department_key"))
+    if dept is not None:
+        data["department"] = dept["name"]
+        data["department_key"] = dept["key"]
+    else:
+        data["department"] = DEPARTMENT_MAP["roads"]["name"]
+        data["department_key"] = "roads"
+    data["category"] = data.get("category") or "General"
+    data.setdefault("normalized_text", raw_text.strip())
+    priority = str(data.get("priority", "")).strip().capitalize()
+    if priority not in ("Critical", "High", "Medium", "Low"):
+        priority = "Medium"
+        data.pop("urgency_score", None)
+    data["priority"] = priority
+    try:
+        data["urgency_score"] = int(data.get("urgency_score", 50))
+    except (TypeError, ValueError):
+        data["urgency_score"] = 50
+    data["urgency_score"] = max(1, min(100, data["urgency_score"]))
+    data.setdefault("is_spam", False)
+    data.setdefault("spam_reason", None)
+    return data
 
 
 def classify_complaint(raw_text: str) -> dict:
     if not llm_client:
+        logger.warning("LLM client not configured; using keyword fallback")
         return keyword_classify(raw_text)
 
     try:
@@ -165,14 +214,12 @@ def classify_complaint(raw_text: str) -> dict:
                 content = content[:-3]
             content = content.strip()
         data = json.loads(content)
-        dept = _resolve_department(data.get("department"), data.get("department_key"))
-        data["department"] = dept["name"]
-        data["department_key"] = dept["key"]
-        data["category"] = data.get("category", "General")
-        data.setdefault("is_spam", False)
-        data.setdefault("spam_reason", None)
-        return data
-    except Exception:
+        return _normalize_classification(data, raw_text)
+    except Exception as exc:
+        logger.warning(
+            "LLM classification failed (model=%s) for text=%r; using keyword fallback: %s",
+            NVIDIA_MODEL, (raw_text[:80] + "...") if len(raw_text) > 80 else raw_text, exc,
+        )
         return keyword_classify(raw_text)
 
 
