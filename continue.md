@@ -179,6 +179,30 @@ Related to Bug 1 — the broken photo URL causes image load to fail in both the 
 
 ---
 
+## 5.5 IMPORTANT — LLM Classification Is Silently Falling Back to Keywords ⚠️
+
+**Root cause found (this is why department/category always look generic):**
+
+- `.env` sets `NVIDIA_MODEL="nvidia/llama-3.1-nemotron-70b-instruct"`, but that model returns a hard **404** for the account tied to this API key:
+  ```
+  404 ... Function '9b96341b-...': Not found for account 'tc1fxui...'
+  ```
+- `classify_complaint()` wraps the LLM call in `try/except` and silently returns `keyword_classify(raw_text)` on any error (`app/ai_service.py`). So **every** classification uses keywords: category always `"General"`, priority fixed at `High`/70 or `Medium`/50, action text `"Dispatch <Dept> team for assessment."`
+- **Models verified WORKING for this key** (probed via `/v1/chat/completions` and `/v1/models`):
+  - `nvidia/nemotron-3-super-120b-a12b` ✅ (also the code default) — do NOT change this
+  - `nvidia/nemotron-3-nano-omni-30b-a3b-reasoning` ✅
+- **Broken for this key (404):** `nvidia/llama-3.1-nemotron-70b-instruct`, `nvidia/llama3-chatqa-1.5-70b`, `nvidia/nemotron-nano-3-30b-a3b`, `nvidia/nemotron-4-340b-instruct`
+
+**To do next session:**
+1. Set `NVIDIA_MODEL="nvidia/nemotron-3-super-120b-a12b"` in `.env` (must restart server — `.env` is read at import time).
+2. Harden `app/ai_service.py`:
+   - Log the real exception (`logger.warning(...)`) instead of swallowing it (`except Exception: return keyword_classify(...)`).
+   - Make the keyword fallback emit real categories + varied urgency instead of `"General"` / fixed 70-50.
+   - Fix `_resolve_department` to only return `roads` as a true last resort (not when `department_key` is missing from an otherwise-valid LLM reply).
+3. Restart server and verify `POST /api/complaints/analyze` returns varied `category`/`urgency_score`/natural `action_recommended` (heart attack → health, gas leak → fire, theft → police).
+
+---
+
 ## 6. What to Implement Next (priority order)
 
 1. **Fix Bug 1** (double `uploads/` in photo URLs) — highest priority, breaks all image viewing
