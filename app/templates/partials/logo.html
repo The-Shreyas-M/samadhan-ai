@@ -1,0 +1,6 @@
+{% set size = size | default(36) %}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" class="shrink-0">
+    <rect width="64" height="64" rx="14" fill="{% if color %}{{ color }}{% else %}#059669{% endif %}"/>
+    <path d="M32 12c8.5 0 14 5.6 14 14 0 9.4-8 13.2-14 26-6-12.8-14-16.6-14-26 0-8.4 5.5-14 14-14z" fill="#ffffff"/>
+    <circle cx="32" cy="25" r="6" fill="{% if color %}{{ color }}{% else %}#059669{% endif %}"/>
+</svg>
