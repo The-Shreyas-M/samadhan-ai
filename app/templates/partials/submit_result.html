@@ -10,7 +10,7 @@
     <button onclick="document.getElementById('submit-feedback').classList.add('hidden'); this.parentElement.remove()" class="text-xs text-slate-500 hover:text-slate-700 mt-2">Dismiss</button>
 </div>
 {% else %}
-<div class="rounded-xl border p-4 {{ 'border-red-300 bg-red-50' if is_flagged else 'border-amber-300 bg-amber-50' if is_duplicate else 'border-emerald-200 bg-emerald-50' }}">
+<div class="rounded-xl border p-4 {{ 'border-red-300 bg-red-50' if is_flagged else 'border-amber-300 bg-amber-50' if is_duplicate else 'border-emerald-200 bg-emerald-50' }}" data-tracking-id="{{ complaint.tracking_id }}">
     <div class="flex items-start gap-3">
         <div class="text-2xl">{{ '🚩' if is_flagged else '⚠️' if is_duplicate else '✅' }}</div>
         <div class="flex-1">

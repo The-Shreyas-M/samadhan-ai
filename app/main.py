@@ -54,7 +54,8 @@ def make_tracking_id():
 
 
 def photo_url(photo_path):
-    """Return the public /uploads/... URL for a stored photo_path."""
+    """Return the public /uploads/... URL for a stored photo_path.
+    Handles both bare filenames and paths that already include an 'uploads' folder."""
     if not photo_path:
         return None
     base = os.path.basename(photo_path.replace("\\", "/"))
@@ -351,6 +352,43 @@ def map_points(request: Request, db: Session = Depends(get_db)):
     return [_point_json(c) for c in complaints]
 
 
+@app.get("/api/dashboard/safety-map")
+def safety_map(db: Session = Depends(get_db)):
+    """Anonymized citizen safety map: clusters complaints into coarse grid zones
+    and returns ONLY colored density (level + radius), never counts or details."""
+    from collections import defaultdict
+    complaints = db.query(Complaint).all()
+    if not complaints:
+        return {"zones": []}
+
+    grid = defaultdict(int)
+    for c in complaints:
+        # ~0.005 deg (~550m) grid cell grouping
+        key = (round(c.lat * 200) / 200, round(c.lon * 200) / 200)
+        grid[key] += 1
+
+    total = len(complaints)
+    order = sorted(grid.values(), reverse=True)
+    # Thresholds so citizens never see exact counts
+    def level(n):
+        if n / total >= 0.35:
+            return 4
+        if n / total >= 0.20:
+            return 3
+        if n / total >= 0.10:
+            return 2
+        return 1
+
+    zones = []
+    for (lat, lon), n in grid.items():
+        zones.append({
+            "lat": lat, "lon": lon,
+            "r": 600 + level(n) * 250,
+            "level": level(n),
+        })
+    return {"zones": zones, "count": len(zones)}
+
+
 def _point_json(c: Complaint):
     return {
         "id": c.id,
@@ -557,10 +595,20 @@ def chart_data(db: Session = Depends(get_db)):
 
 
 @app.patch("/api/complaints/{complaint_id}/status")
-def update_status(complaint_id: int, request: Request, status: str = Form(...), db: Session = Depends(get_db)):
+async def update_status(complaint_id: int, request: Request, db: Session = Depends(get_db)):
     user = get_current_user(request, db)
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
+
+    status = request.query_params.get("status")
+    try:
+        form = await request.form()
+        status = form.get("status") or status
+    except Exception:
+        pass
+    status = (status or request.query_params.get("status") or "").strip()
+    if not status:
+        raise HTTPException(status_code=400, detail="Missing status")
 
     complaint = db.query(Complaint).filter(Complaint.id == complaint_id).first()
     if not complaint:

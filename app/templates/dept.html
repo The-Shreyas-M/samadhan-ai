@@ -130,7 +130,7 @@ document.getElementById('f-category').addEventListener('change', refreshFilters)
 let mapRefreshTimer = null;
 function startMapRefresh() {
     if (mapRefreshTimer) clearInterval(mapRefreshTimer);
-    mapRefreshTimer = setInterval(loadMapPoints, 15000);
+    mapRefreshTimer = setInterval(() => { loadMapPoints(); reloadList(); }, 10000);
 }
 function stopMapRefresh() {
     if (mapRefreshTimer) clearInterval(mapRefreshTimer);

@@ -131,6 +131,23 @@
         </form>
     </div>
 
+    <!-- Citizen Safety Map -->
+    <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mt-6">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+            <div>
+                <h2 class="font-semibold text-slate-900">City Safety Map</h2>
+                <p class="text-sm text-slate-500 mt-1">Aggregated heat zones only — no complaint details are shown. Tinted areas indicate higher reported-issue density.</p>
+            </div>
+            <div class="flex items-center gap-1 text-[11px] text-slate-500">
+                <span class="flex items-center gap-1"><i class="inline-block w-3 h-3 rounded-full" style="background:#22c55e88"></i> Low</span>
+                <span class="flex items-center gap-1"><i class="inline-block w-3 h-3 rounded-full" style="background:#eab30888"></i> Moderate</span>
+                <span class="flex items-center gap-1"><i class="inline-block w-3 h-3 rounded-full" style="background:#f97316aa"></i> High</span>
+                <span class="flex items-center gap-1"><i class="inline-block w-3 h-3 rounded-full" style="background:#dc2626aa"></i> Very High</span>
+            </div>
+        </div>
+        <div id="safety-map" class="h-[360px] w-full rounded-xl overflow-hidden border border-slate-200"></div>
+    </div>
+
     <!-- Track shortcut -->
     <div class="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 mt-6">
         <h2 class="font-semibold text-slate-900 mb-1">Track your complaint</h2>
@@ -146,6 +163,8 @@
 <script>
 let formMap = null, formMarker = null, cameraStream = null;
 let analysis = null;
+let locationSource = null;
+let gpsEnforced = false;
 
 // ---------- Pin-placement map ----------
 function initFormMap() {
@@ -153,40 +172,62 @@ function initFormMap() {
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap'
     }).addTo(formMap);
-    formMap.on('click', function(e) { setLocation(e.latlng.lat, e.latlng.lng); });
-    setLocation(28.6139, 77.2090);
+    formMap.on('click', function(e) { setLocation(e.latlng.lat, e.latlng.lng, 'manual'); });
+    setLocation(28.6139, 77.2090, 'default');
 }
 
-function setLocation(lat, lng) {
+function setLocation(lat, lng, source) {
     document.getElementById('lat').value = lat;
     document.getElementById('lon').value = lng;
+    locationSource = source || 'manual';
     document.getElementById('loc-hint').textContent = 'Selected: ' + lat.toFixed(5) + ', ' + lng.toFixed(5);
     if (formMarker) formMarker.setLatLng([lat, lng]);
     else formMarker = L.marker([lat, lng]).addTo(formMap);
     if (formMap) formMap.panTo([lat, lng]);
+    checkGpsEnforcement();
 }
 
 function useGps() {
+    const statusEl = document.getElementById('loc-status');
     if (!navigator.geolocation) {
-        document.getElementById('loc-status').textContent = 'GPS not available in this browser';
+        // Fallback to IP-based geo service
+        ipFallback();
         return;
     }
-    document.getElementById('loc-status').textContent = 'Locating...';
+    statusEl.textContent = 'Locating...';
     navigator.geolocation.getCurrentPosition(function(pos) {
-        setLocation(pos.coords.latitude, pos.coords.longitude);
-        document.getElementById('loc-status').textContent = '✓ Location set from GPS';
-        // If GPS was enforced, now we have valid coords — enable submit
+        setLocation(pos.coords.latitude, pos.coords.longitude, 'gps');
+        statusEl.textContent = '✓ Location set from GPS';
         checkGpsEnforcement();
     }, function(err) {
         let msg = 'Could not get location';
         if (err.code === err.PERMISSION_DENIED) msg = 'Location permission denied. Enable in browser settings.';
         else if (err.code === err.TIMEOUT) msg = 'Location request timed out';
         else if (err.code === err.POSITION_UNAVAILABLE) msg = 'Position unavailable';
-        document.getElementById('loc-status').textContent = msg;
-    }, { enableHighAccuracy: true, timeout: 10000 });
+        statusEl.textContent = msg + '. Trying IP-based location...';
+        ipFallback();
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+}
+
+function ipFallback() {
+    const statusEl = document.getElementById('loc-status');
+    fetch('https://ipapi.co/json/')
+        .then(r => r.json())
+        .then(d => {
+            if (d && d.latitude && d.longitude) {
+                setLocation(parseFloat(d.latitude), parseFloat(d.longitude), 'ip');
+                statusEl.textContent = '✓ Location from approximate IP lookup';
+            } else {
+                statusEl.textContent = 'Could not determine your location. Click the map to pin the location.';
+            }
+        })
+        .catch(() => {
+            statusEl.textContent = 'Could not get location. Click the map to pin the location manually.';
+        });
 }
 
 function citizenSearchPlace() {
+    if (gpsEnforced) { alert('For High/Critical complaints, manual location search is disabled. Please use "Use My Location".'); return; }
     const q = document.getElementById('place-search').value.trim();
     if (!q || !formMap) return;
     fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&q=' + encodeURIComponent(q))
@@ -194,7 +235,7 @@ function citizenSearchPlace() {
         .then(res => {
             if (res && res.length) {
                 const lat = parseFloat(res[0].lat), lon = parseFloat(res[0].lon);
-                setLocation(lat, lon);
+                setLocation(lat, lon, 'search');
                 document.getElementById('loc-hint').textContent = 'Selected from search: ' + lat.toFixed(5) + ', ' + lon.toFixed(5);
             } else {
                 alert('Place not found');
@@ -205,6 +246,7 @@ function citizenSearchPlace() {
 
 function enforceGpsOnly(enable) {
     const banner = document.getElementById('loc-gps-banner');
+    gpsEnforced = !!enable;
     if (enable) {
         banner.classList.remove('hidden');
         // Remove click handler to prevent manual pin
@@ -213,19 +255,20 @@ function enforceGpsOnly(enable) {
     } else {
         banner.classList.add('hidden');
         // Re-add click handler
-        if (formMap) formMap.on('click', function(e) { setLocation(e.latlng.lat, e.latlng.lng); });
+        if (formMap) formMap.on('click', function(e) { setLocation(e.latlng.lat, e.latlng.lng, 'manual'); });
         document.getElementById('loc-hint').textContent = 'Click on the map to set the location of the issue.';
     }
     checkGpsEnforcement();
 }
 
 function checkGpsEnforcement() {
-    const lat = document.getElementById('lat').value;
-    const lon = document.getElementById('lon').value;
-    // If GPS is enforced and we have valid coords, we're good
-    const isEnforced = !document.getElementById('loc-gps-banner').classList.contains('hidden');
-    if (isEnforced && lat && lon) {
+    if (!gpsEnforced) return;
+    if (locationSource === 'gps' || locationSource === 'ip') {
         document.getElementById('loc-status').textContent = '✓ GPS location verified';
+        document.getElementById('loc-status').className = 'text-xs text-emerald-600 flex items-center';
+    } else {
+        document.getElementById('loc-status').textContent = '⚠ High/Critical complaint needs a verified GPS location. Use "Use My Location".';
+        document.getElementById('loc-status').className = 'text-xs text-red-600 flex items-center';
     }
 }
 
@@ -389,7 +432,21 @@ function retakePhoto() {
 }
 
 // ---------- Submit with loading + double-click protection ----------
-document.getElementById('complaint-form').addEventListener('htmx:beforeRequest', function() {
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('place-search');
+    if (searchInput) searchInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); citizenSearchPlace(); }
+    });
+});
+
+document.getElementById('complaint-form').addEventListener('htmx:beforeRequest', function(evt) {
+    if (gpsEnforced && locationSource !== 'gps' && locationSource !== 'ip') {
+        evt.preventDefault();
+        document.getElementById('loc-status').textContent = '⚠ Please use "Use My Location" before submitting a High/Critical complaint.';
+        document.getElementById('loc-status').className = 'text-xs text-red-600 flex items-center';
+        document.getElementById('loc-status').parentElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
     const btn = document.getElementById('submit-btn');
     showLoading(btn, 'Submitting...');
     btn.classList.add('opacity-60');
@@ -397,22 +454,51 @@ document.getElementById('complaint-form').addEventListener('htmx:beforeRequest',
 document.getElementById('complaint-form').addEventListener('htmx:afterRequest', function(evt) {
     const btn = document.getElementById('submit-btn');
     btn.classList.remove('opacity-60');
-    // Reset the spinner + label; keep disabled since the complaint is now submitted.
-    btn.disabled = true;
+    btn.disabled = false;
     if (btn.dataset.orig) btn.innerHTML = btn.dataset.orig;
     else btn.innerHTML = 'Submit Complaint';
     if (evt.detail.successful) {
-        document.getElementById('submit-hint').textContent = 'Complaint submitted. Your tracking ID is in the box above.';
+        document.getElementById('submit-hint').textContent = 'Complaint submitted. Redirecting to tracking page...';
         document.getElementById('submit-feedback').classList.remove('hidden');
         setTimeout(() => {
             const fb = document.getElementById('submit-feedback');
             if (fb) fb.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }, 100);
+        const result = evt.detail.xhr.responseText;
+        const match = result.match(/data-tracking-id="([^"]+)"/);
+        if (match && match[1]) {
+            setTimeout(() => { window.location.href = '/track/' + match[1]; }, 1500);
+        }
     } else {
         document.getElementById('submit-hint').textContent = 'Submission failed. Please try again.';
     }
 });
 
 window.addEventListener('load', initFormMap);
+
+let safetyMap = null;
+function safetyColor(level) {
+    return { 1: '#22c55e', 2: '#eab308', 3: '#f97316', 4: '#dc2626' }[level] || '#22c55e';
+}
+function initSafetyMap() {
+    safetyMap = L.map('safety-map').setView([28.6139, 77.2090], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(safetyMap);
+    fetch('/api/dashboard/safety-map')
+        .then(r => r.json())
+        .then(data => {
+            (data.zones || []).forEach(z => {
+                L.circle([z.lat, z.lon], {
+                    radius: z.r,
+                    color: safetyColor(z.level),
+                    weight: 1,
+                    opacity: 0.55,
+                    fillColor: safetyColor(z.level),
+                    fillOpacity: 0.30
+                }).addTo(safetyMap);
+            });
+        })
+        .catch(() => {});
+}
+window.addEventListener('load', initSafetyMap);
 </script>
 {% endblock %}

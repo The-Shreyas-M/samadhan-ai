@@ -61,12 +61,14 @@
     <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-100">
         <span class="text-xs text-slate-400">Dept: {{ complaint.department }}</span>
         {% if complaint.status != 'Resolved' %}
-            <select name="status" hx-patch="/api/complaints/{{ complaint.id }}/status" hx-target="#complaint-{{ complaint.id }}" hx-swap="outerHTML"
-                class="border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none">
-                <option value="Pending" {{ 'selected' if complaint.status == 'Pending' }}>Pending</option>
-                <option value="In Progress" {{ 'selected' if complaint.status == 'In Progress' }}>In Progress</option>
-                <option value="Resolved" {{ 'selected' if complaint.status == 'Resolved' }}>Resolved</option>
-            </select>
+            <form hx-patch="/api/complaints/{{ complaint.id }}/status" hx-target="#complaint-{{ complaint.id }}" hx-swap="outerHTML" style="display:inline">
+                <select name="status" hx-trigger="change" hx-include="this"
+                    class="border border-slate-300 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none">
+                    <option value="Pending" {{ 'selected' if complaint.status == 'Pending' }}>Pending</option>
+                    <option value="In Progress" {{ 'selected' if complaint.status == 'In Progress' }}>In Progress</option>
+                    <option value="Resolved" {{ 'selected' if complaint.status == 'Resolved' }}>Resolved</option>
+                </select>
+            </form>
         {% else %}
             <span class="text-xs font-medium text-emerald-600">Resolved</span>
         {% endif %}

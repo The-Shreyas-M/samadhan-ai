@@ -31,20 +31,38 @@ Your tasks:
 4. Assign a priority level.
 5. Assign an urgency score (1-100).
 6. Recommend a brief 1-line dispatch action.
-7. Assess whether the complaint looks SPAM, fake, nonsensical, or an automated attack (e.g. random characters, gibberish, repeated meaningless text, or abuse). Set "is_spam" true and give a short "spam_reason" if so.
+7. Assess whether the complaint looks SPAM, fake, nonsensical, or an automated attack. Set "is_spam" true and give a short "spam_reason" if so.
 
 Valid departments (name, key):
 {VALID_DEPARTMENTS_STR}
 
 Valid priorities: Critical, High, Medium, Low
 
+CRITICAL CLASSIFICATION RULES — follow these EXACTLY:
+- "heart attack", "cardiac", "chest pain", "can't breathe", "breathing difficulty", "stroke", "severe bleeding", "unconscious person", "medical emergency", "ambulance needed" → Public Health & Medical (health)
+- "gas leak", "fire", "burning", "building collapse", "rescue needed" → Fire & Emergency Services (fire)
+- "murder", "fight", "assault", "theft", "robbery", "stolen", "crime" → Police & Law Enforcement (police)
+- "water not coming", "water supply", "pipeline", "drainage", "sewerage" → Water Supply & Sewerage (water)
+- "pothole", "road damage", "broken road", "street light" → Roads & Infrastructure (roads)
+- "garbage", "trash", "waste", "sewage smell", "sanitation" → Solid Waste & Sanitation (sanitation)
+- "power cut", "electricity", "transformer", "wire down" → Electricity & Power (electricity)
+- "illegal construction", "encroachment", "building violation" → Urban Planning & Building (planning)
+- "pollution", "tree cutting", "stray animals" → Environment & Green (environment)
+- "bus", "traffic", "parking", "signal" → Public Transport & Traffic (transport)
+- "school", "college", "mid-day meal" → Education (education)
+- "homeless", "hungry", "disabled", "elder care" → Social Welfare (social)
+
+IMPORTANT: A "heart attack" or "chest pain" is a MEDICAL emergency, NOT a crime/police matter. Always route health emergencies to the Public Health & Medical department.
+
 Examples:
-- "gas leak" -> Fire & Emergency Services (fire)
-- "murder", "fight", "theft" -> Police & Law Enforcement (police)
-- "water not coming" -> Water Supply & Sewerage (water)
-- "forest fire" -> Fire & Emergency Services (fire)
-- "homeless hungry" -> Social Welfare (social)
-- "asdkjgh asdkjhg asd" -> is_spam true, department Fire & Emergency Services
+- "heart attack ho raha hai" → Public Health & Medical (health), Critical
+- "chest pain and breathing difficulty" → Public Health & Medical (health), Critical
+- "gas leak" → Fire & Emergency Services (fire)
+- "murder", "fight", "theft" → Police & Law Enforcement (police)
+- "water not coming" → Water Supply & Sewerage (water)
+- "forest fire" → Fire & Emergency Services (fire)
+- "homeless hungry" → Social Welfare (social)
+- "asdkjgh asdkjhg asd" → is_spam true
 
 Respond with ONLY valid JSON, no markdown, no explanation:
 {{
@@ -60,16 +78,22 @@ Respond with ONLY valid JSON, no markdown, no explanation:
 }}"""
 
 # Keyword-based fallback map (English/Hindi/Hinglish keywords -> department_key)
+# ORDER MATTERS: multi-word / specific phrases MUST come before short generic words.
+# Medical/emergency keywords checked FIRST so "heart attack" doesn't match police "attack".
 KEYWORD_MAP = [
-    ("police", ["murder", "theft", "robbery", "stolen", "assault", "fight", "attack", "crime",
+    ("health", ["heart attack", "cardiac", "chest pain", "can't breathe", "breathing difficulty",
+                "saans", "breathless", "stroke", "severe bleeding", "unconscious", "ambulance",
+                "medical emergency", "heart", "dil ka daura", "sans ki taklif",
+                "hospital", "doctor", "disease", "dengue", "malaria", "mosquito", "health",
+                "medicine", "aspatal", "bimari", "beemar"]),
+    ("fire", ["gas leak", "gas l", "fire", "aag", "aag lag", "building collapse", "rescue"]),
+    ("police", ["murder", "theft", "robbery", "stolen", "assault", "fight", "crime",
                 "forc", "chori", "loot", "hatya", "maar pitai", "thug", "bns", "pistol", "gund", "haras",
-                "sim", "cyber", "fraud"]),
-    ("fire", ["fire", "gas leak", "gas l"]),
-    ("water", ["water", "paani", "paani", "supply", "pipe", "sewer", "naali", "drain", "jal"]),
-    ("roads", ["pothole", "road", "pothole", "gadda", "sadak", "footpath", "bridge", "flyover", "street light"]),
+                "sim", "cyber", "fraud", "police", " FIR"]),
+    ("water", ["water", "paani", "supply", "pipe", "sewer", "naali", "drain", "jal"]),
+    ("roads", ["pothole", "road", "gadda", "sadak", "footpath", "bridge", "flyover", "street light"]),
     ("sanitation", ["garbage", "kachra", "trash", "waste", "sewage", "ganda", "smell", "sweep", "sanit", "bhangi"]),
     ("electricity", ["bijli", "electric", "light", "power cut", "current", "transformer", "wire", "pole", "fuse"]),
-    ("health", ["hospital", "doctor", "disease", "dengue", "malaria", "mosquito", "health", "medicine", "aspatal"]),
     ("planning", ["building", "construction", "illegal", "encroach", "plot", "tower", "makan", "naksha"]),
     ("environment", ["tree", "park", "pollution", "smoke", "plastic", "garden", "ped", "animals", "stray"]),
     ("transport", ["bus", "traffic", "signal", "parking", "auto", "congestion", "jam", "vehicle"]),
